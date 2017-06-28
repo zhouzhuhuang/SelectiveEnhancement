@@ -46,8 +46,6 @@ void MilUHessian3D::calcHessianMat(MilUData3D &src)
 	this->mat(1, 0) = this->mat(0, 1);
 	this->mat(2, 0) = this->mat(0, 2);
 	this->mat(2, 1) = this->mat(1, 2);
-
-	std::cout << this->mat << std::endl;
 }
 
 double MilUHessian3D::enhanceMassiveStructure(double gamma)

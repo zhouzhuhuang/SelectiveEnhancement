@@ -8,21 +8,32 @@
 
 #include <MilUDataBase.h>
 #include <MilUNumpyData.h>
+#include <MilUCuNumpyData.h>
 #include <MilUHessian.h>
+#include <MilUHessianGPU.h>
 
 namespace np = boost::numpy;
 namespace bp = boost::python;
 namespace spd = spdlog;
 
+auto logger = spdlog::stderr_color_mt("Selective Enhance");
+
+//gauss = lambda sigma, x, y, z : np.exp(-1 * ((x**2 + y**2 + z**2) / (2.0 * (sigma ** 2))))
+double gauss(double x, double y, double z, double sigma)
+{
+	double gaussVal = 0;
+	gaussVal = exp(-1 * (x * x + y * y + z * z)/ (2.0 * (sigma * sigma)));
+	return gaussVal;
+}
+
 double cpuSelectiveEnhancement(np::ndarray inputVolume, double gamma)
 {
-	auto logger = spdlog::stderr_color_mt("Selective Enhance");
 	if(inputVolume.get_dtype() != np::dtype::get_builtin<double>())
 	{
 		logger->error("Invalid Argument.");
 		throw std::invalid_argument("cpuSEFilter");
 	}
-	MilUNumpyData inputNumpy(inputVolume);
+	MilUNPdouble inputNumpy(inputVolume);
 	MilUData3D inputData(inputNumpy);
 	MilUHessian3D hesse(inputData);
 
@@ -31,23 +42,19 @@ double cpuSelectiveEnhancement(np::ndarray inputVolume, double gamma)
 
 np::ndarray cpuSelectiveEnhancementVoxelwise(np::ndarray inputVolume, double gamma)
 {
-	auto logger = spdlog::stderr_color_mt("Selective Enhance VW");
 	if(inputVolume.get_dtype() != np::dtype::get_builtin<double>())
 	{
 		logger->error("Invalid Argument.");
 		throw std::invalid_argument("cpuSEFilter");
 	}
-	MilUNumpyData inputNumpy(inputVolume);
+	MilUNPdouble inputNumpy(inputVolume);
 	MilUData3D inputData(inputNumpy);
 
-	MilUNumpyData outputNumpy(inputNumpy.getShape());
+	MilUNPdouble outputNumpy(inputNumpy.getShape());
 	MilUData3D voi(5, 5, 5);
 
-	std::cout << outputNumpy.getShape()[0] << ", " << outputNumpy.getShape()[1] << ", " << outputNumpy.getShape()[2] << " "
-			  << inputData.getShape()[0] << ", " << inputData.getShape()[1] << ", " << inputData.getShape()[2];
-
-	for(int i = 2; i < inputData.getShape()[0] - 2; i++){
-	for(int j = 2; j < inputData.getShape()[1] - 2; j++){
+	for(int i = 2; i < inputData.getShape()[0] - 2; i++)
+	for(int j = 2; j < inputData.getShape()[1] - 2; j++)
 	for(int k = 2; k < inputData.getShape()[2] - 2; k++)
 	{
 		for(int z = k - 2, voiZ = 0; z <= k + 2; z++, voiZ++)
@@ -61,18 +68,38 @@ np::ndarray cpuSelectiveEnhancementVoxelwise(np::ndarray inputVolume, double gam
 		double enhancedVal = hesse.enhanceMassiveStructure(gamma);
 		outputNumpy.at(std::vector<int>{i, j, k}) = enhancedVal;
 	}
-	}
-	std::cout << i << std::endl;
-	}
 
 	return outputNumpy.getDataAsNumpy();
 }
 
+np::ndarray gpuSelectiveEnhancementVoxelwise(np::ndarray inputVolume, double gamma)
+{
+	if(inputVolume.get_dtype() != np::dtype::get_builtin<double>())
+	{
+		logger->error("Invalid Argument.");
+		throw std::invalid_argument("gpuSEFilter");
+	}
+	MilUCuNPdouble inputNpArray(inputVolume);
+	MilUCuNPdouble outputNpArray(inputNpArray.getShape());
+
+	cudaDeviceProp prop;
+	cudaGetDeviceProperties(&prop, 0);
+	int blocks = prop.multiProcessorCount;
+
+	inputNpArray.copyHostToDevice();
+	outputNpArray.copyHostToDevice();
+	enhancement<<<2*blocks, 512>>>(inputNpArray.getCudaData(), outputNpArray.getCudaData(), gamma);
+	outputNpArray.copyDeviceToHost();
+
+	return outputNpArray.getDataAsNumpy();
+}
 
 BOOST_PYTHON_MODULE(pycuSEFilter)
 {
 	Py_Initialize();
 	np::initialize();
+	bp::def("gauss", gauss);
 	bp::def("cpuSEFilter", cpuSelectiveEnhancement);
 	bp::def("cpuSEFilterVW", cpuSelectiveEnhancementVoxelwise);
+	bp::def("gpuSEFilterVW", gpuSelectiveEnhancementVoxelwise);
 }

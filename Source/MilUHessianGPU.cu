@@ -1,4 +1,5 @@
 #include <MilUHessianGPU.h>
+#include <MilUCuData3D.h>
 
 __global__ void enhancement(CudaDataElements<double> src, CudaDataElements<double> dst, double gamma)
 {
@@ -6,28 +7,23 @@ __global__ void enhancement(CudaDataElements<double> src, CudaDataElements<doubl
 	int bx = blockIdx.x;
 	int tid = tx + bx * blockDim.x;
 
-	if(tid == 76)
-	{
-		int i;
-		i = 0;
-	}
-
 	while(tid < src.cuSize)
 	{
-		double z = floor(tid / (double) (src.cuShape[0] * src.cuShape[1]));
-		int residum = (tid) % (src.cuShape[0] * src.cuShape[1]);
-		double y = floor(residum / (double) src.cuShape[0]);
-		double x = residum % src.cuShape[0];
+		int z = int(floor(tid / (double) (src.cuShape[2] * src.cuShape[1])));
+		int residum = (tid) % (src.cuShape[2] * src.cuShape[1]);
+		int y = int(floor(residum / (double) src.cuShape[2]));
+		int x = int(residum % src.cuShape[2]);
 
-		double tempVol[125];
-		if((x >= 2 && x < src.cuShape[0] - 2) && (y >= 2 && y < src.cuShape[1] - 2) && (z >= 2 && z < src.cuShape[2] - 2))
+		if((x >= 2 && x < src.cuShape[2] - 2) && (y >= 2 && y < src.cuShape[1] - 2) && (z >= 2 && z < src.cuShape[0] - 2))
 		{
+			double tempVol[125];
+
 			for(int i = -2; i < 3; ++i)
 			for(int j = -2; j < 3; ++j)
 			for(int k = -2; k < 3; ++k)
 			{
-				int index = 5*5 * (i + z) + 5 * (j + y) + (k + x);
-				tempVol[5*5*(i + 2) + 5*(j + 2) + (k + 2)] = src.cuPtr[index];
+				int index = (i + z)*src.cuShape[2]*src.cuShape[1] + (j + y)*src.cuShape[2] + (k + x);
+				tempVol[5*5*(i + 2) + 5*(j + 2) + (k + 2)] = src.getData(index);
 			}
 
 			double diffXX, diffXY, diffXZ, diffYY, diffYZ, diffZZ;
@@ -62,7 +58,7 @@ __global__ void enhancement(CudaDataElements<double> src, CudaDataElements<doubl
 			for(int i = 0; i < 2; ++i)
 			for(int j = 2; j > i; --j)
 			{
-				if(lambda[j] < lambda[j - 1])
+				if(lambda[j] > lambda[j - 1])
 				{
 					double temp = lambda[j];
 					lambda[j] = lambda[j - 1];
@@ -70,13 +66,13 @@ __global__ void enhancement(CudaDataElements<double> src, CudaDataElements<doubl
 				}
 			}
 
-			if(lambda[2] < 0)
+			if(lambda[0] < 0)
 			{
 				double l2Pl3 = (lambda[1] / lambda[2]);
 				double l1Pl2 = (lambda[0] / lambda[1]);
 				enhancedVal = fabs(lambda[2]) * pow(l2Pl3, gamma) * pow(l1Pl2, gamma);
 			}
-			dst.cuPtr[tid] = enhancedVal;
+			dst.setData(tid, enhancedVal);
 		}
 
 		tid += blockDim.x * gridDim.x;
@@ -96,7 +92,7 @@ __global__ void checkJacobi(CudaDataElements<double> srcMat)
 		for(int i = 0; i < 3; ++i)
 		for(int j = 0; j < 3; ++j)
 		{
-			mat[i][j] = srcMat.cuPtr[j + 3*i];
+			mat[i][j] = srcMat.getData(j + i*3);
 		}
 
 		jacobi3D(mat, 1000);
@@ -104,7 +100,7 @@ __global__ void checkJacobi(CudaDataElements<double> srcMat)
 		for(int i = 0; i < 3; ++i)
 		for(int j = 0; j < 3; ++j)
 		{
-			 srcMat.cuPtr[j + 3*i] = mat[i][j];
+			 srcMat.setData(j + 3*i, mat[i][j]);
 		}
 
 		tid += blockDim.x * gridDim.x;
@@ -118,7 +114,6 @@ __global__ void sobelOnGPU(CudaDataElements<double> srcVol, MIL_U_DIFF_DIRECT_GP
 	int bx = blockIdx.x;
 	int tid = tx + bx * blockDim.x;
 
-	double sobelVal;
 	if(tid == 1)
 	{
 		for(int i = 0; i < 27; ++i)
@@ -128,7 +123,7 @@ __global__ void sobelOnGPU(CudaDataElements<double> srcVol, MIL_U_DIFF_DIRECT_GP
 
 		int3 center = {1, 1, 1};
 		int3 matSize = {3, 3, 3};
-		sobelVal = sobel(tempVol, direction, center, matSize);
+		sobel(tempVol, direction, center, matSize);
 	}
 }
 
