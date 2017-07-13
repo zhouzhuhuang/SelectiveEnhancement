@@ -31,7 +31,7 @@ enum MIL_U_DIFF_ORDER_GPU
 	MIL_U_GPU_DIFF_ZZ
 };
 
-__global__ void enhancement(CudaDataElements<double> src, CudaDataElements<double> dst, double gamma);
+__global__ void enhancement(CudaDataElements<double> src, CudaDataElements<double> dst, double gamma, CudaDataElements<bool> mask);
 __global__ void checkJacobi(CudaDataElements<double> srcMat);
 __global__ void sobelOnGPU(CudaDataElements<double> srcVol, MIL_U_DIFF_DIRECT_GPU direction);
 

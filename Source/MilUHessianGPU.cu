@@ -1,7 +1,6 @@
 #include <MilUHessianGPU.h>
-#include <MilUCuData3D.h>
 
-__global__ void enhancement(CudaDataElements<double> src, CudaDataElements<double> dst, double gamma)
+__global__ void enhancement(CudaDataElements<double> src, CudaDataElements<double> dst, double gamma, CudaDataElements<bool> mask)
 {
 	int tx = threadIdx.x;
 	int bx = blockIdx.x;
@@ -13,6 +12,12 @@ __global__ void enhancement(CudaDataElements<double> src, CudaDataElements<doubl
 		int residum = (tid) % (src.cuShape[2] * src.cuShape[1]);
 		int y = int(floor(residum / (double) src.cuShape[2]));
 		int x = int(residum % src.cuShape[2]);
+
+		if(!mask.at(tid))
+		{
+			tid += blockDim.x * gridDim.x;
+			continue;
+		}
 
 		if((x >= 2 && x < src.cuShape[2] - 2) && (y >= 2 && y < src.cuShape[1] - 2) && (z >= 2 && z < src.cuShape[0] - 2))
 		{

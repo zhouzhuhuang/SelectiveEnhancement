@@ -72,15 +72,16 @@ np::ndarray cpuSelectiveEnhancementVoxelwise(np::ndarray inputVolume, double gam
 	return outputNumpy.getDataAsNumpy();
 }
 
-np::ndarray gpuSelectiveEnhancementVoxelwise(np::ndarray inputVolume, double gamma)
+np::ndarray gpuSelectiveEnhancementVoxelwise(np::ndarray inputVolume, double gamma, np::ndarray mask)
 {
-	if(inputVolume.get_dtype() != np::dtype::get_builtin<double>())
+	if(inputVolume.get_dtype() != np::dtype::get_builtin<double>() || mask.get_dtype() != np::dtype::get_builtin<bool>())
 	{
 		logger->error("Invalid Argument.");
 		throw std::invalid_argument("gpuSEFilter");
 	}
 	MilUCuNPdouble inputNpArray(inputVolume);
 	MilUCuNPdouble outputNpArray(inputNpArray.getShape());
+	MilUCuNPbool maskNP(mask);
 
 	cudaDeviceProp prop;
 	cudaGetDeviceProperties(&prop, 0);
@@ -88,7 +89,7 @@ np::ndarray gpuSelectiveEnhancementVoxelwise(np::ndarray inputVolume, double gam
 
 	inputNpArray.copyHostToDevice();
 	outputNpArray.copyHostToDevice();
-	enhancement<<<2*blocks, 512>>>(inputNpArray.getCudaData(), outputNpArray.getCudaData(), gamma);
+	enhancement<<<2*blocks, 512>>>(inputNpArray.getCudaData(), outputNpArray.getCudaData(), gamma, maskNP.getCudaData());
 	outputNpArray.copyDeviceToHost();
 
 	return outputNpArray.getDataAsNumpy();
